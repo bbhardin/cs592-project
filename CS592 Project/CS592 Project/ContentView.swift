@@ -16,7 +16,7 @@ struct ContentView: View {
         
         VStack {
             
-            HStack {
+            HStack(alignment: .top) {
                 TextField("Enter your search", text: $searchQuery)
                     .padding(.leading)
                 
@@ -28,10 +28,6 @@ struct ContentView: View {
                     process.standardOutput = stdOut
                     process.launch()
                     process.waitUntilExit()
-    //                let executableURL = URL(fileURLWithPath: )
-    //                try! Process.run(executableURL,
-    //                                 arguments: [self.message],
-    //                                 terminationHandler: nil)
                     
                     let data = stdOut.fileHandleForReading.readDataToEndOfFile()
                     let output = String(data: data, encoding: .utf8)!
@@ -42,11 +38,14 @@ struct ContentView: View {
                 }) {
                     Text("Seach")
                 }.padding(.trailing)
-            }
+                
+            }.padding(.top)
             
             
             Text(self.searchResults)
                 .padding()
+            
+            Spacer()
             
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
         
