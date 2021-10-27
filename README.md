@@ -1,1 +1,1 @@
-# cs592-project
+# CS592 Human-AI Interaction Project
