@@ -22,7 +22,7 @@ struct MyPreview: NSViewRepresentable {
     var fileName: String
 
     func makeNSView(context: NSViewRepresentableContext<MyPreview>) -> QLPreviewView {
-        let preview = QLPreviewView(frame: .zero, style: .normal)
+        let preview = QLPreviewView(frame: .init(x: 0, y: 0, width: 100, height: 100), style: .normal)
         preview?.autostarts = true
         preview?.previewItem = loadPreviewItem(with: fileName) as QLPreviewItem
         return preview ?? QLPreviewView()
@@ -41,40 +41,57 @@ struct ContentView: View {
     @State var searchResults = ""
     @State var searchResultsArray = [""]
     @State var showResults = false
-    @State var selectedColor = Color.clear
+    @State var selectedColor = [Color](repeatElement(Color.clear, count: 8))
     
     var body: some View {
         
         VStack {
+            
+            Button("Allow Permissions", action: {
+                promptForWorkingDirectoryPermission()
+            })
             
             HStack(alignment: .top) {
                 TextField("Enter your search", text: $searchQuery)
                     .padding(.leading)
                 
                 Button(action: {
-                    promptForWorkingDirectoryPermission()
+                    if (searchQuery == "") {
+                        return
+                    }
+                    
                     let stdOut = Pipe()
                     let process = Process()
-                    process.launchPath = "/usr/bin/mdfind"
+                    process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
                     process.arguments = [self.searchQuery]
                     process.standardOutput = stdOut
-                    process.launch()
-                    process.waitUntilExit()
                     
+//                    process.waitUntilExit()
+                    
+                    do {
+                            try process.run()
+                        }
+                    catch{ print(error)}
+                        
                     let data = stdOut.fileHandleForReading.readDataToEndOfFile()
                     let output = String(data: data, encoding: .utf8)!
-                        
+                    
                     searchResults = output
-                    searchResultsArray = searchResults.components(separatedBy: "\n")
-                    showResults = true
-
+                    searchResultsArray = searchResults.components(separatedBy: "\n").filter({ $0 != ""})
+                    if (searchResultsArray.count != 0) {
+                        showResults = true
+                    } else {
+                        showResults = false
+                    }
+                
                     
                 }) {
                     Text("Seach")
                 }.padding(.trailing)
             
-                
-            }.padding(.top)
+                // TODO: Add loading indicator and disable button for slow search
+            }
+            .padding(.top)
             
             
 //            Text(self.searchResults)
@@ -90,28 +107,65 @@ struct ContentView: View {
                             VStack {
                                 MyPreview(fileName: searchResultsArray[i]).frame(width: 100, height: 100, alignment: .center)
                                 Text(searchResultsArray[i].components(separatedBy: "/").last ?? "")
-                            }.padding(5)
+                            }
                         }.contextMenu {
                             Button("Show in Finder", action: {
                                 NSWorkspace.shared.selectFile(searchResultsArray[i], inFileViewerRootedAtPath: "/Users/")
                             })
                         }
                         .onTapGesture {
-                            selectedColor = (selectedColor == .blue) ? Color.clear : Color.blue
+                            selectedColor[i] = (selectedColor[i] == .blue) ? Color.clear : Color.blue
+                            for l in 0...selectedColor.count-1 {
+                                if (l != i) {
+                                    selectedColor[l] = Color.clear
+                                }
+                            }
                         }
-                        .background(selectedColor)
+                        .background(selectedColor[i])
                         .cornerRadius(10)
                         
                     }
                     
                 }.padding(.top)
+                
+                HStack(alignment: .top) {
+                    
+                    // Only show first four results
+                    if (searchResultsArray.count - 1 >= 4) {
+                        ForEach((4...min(7, searchResultsArray.count-1)), id: \.self) { i in
+                            VStack{
+                                VStack {
+                                    MyPreview(fileName: searchResultsArray[i]).frame(width: 100, height: 100, alignment: .center)
+                                    Text(searchResultsArray[i].components(separatedBy: "/").last ?? "")
+                                }.padding(5)
+                            }.contextMenu {
+                                Button("Show in Finder", action: {
+                                    NSWorkspace.shared.selectFile(searchResultsArray[i], inFileViewerRootedAtPath: "/Users/")
+                                })
+                            }.onTapGesture {
+                                selectedColor[i] = (selectedColor[i] == .blue) ? Color.clear : Color.blue
+                                for l in 0...selectedColor.count-1 {
+                                    if (l != i) {
+                                        selectedColor[l] = Color.clear
+                                    }
+                                }
+                            }
+                            .background(selectedColor[i])
+                            .cornerRadius(10)
+                        }
+                    }
+                    
+                }.padding(.top)
                
+            } else {
+                Text("No Results")
             }
             
             Spacer()
             
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding()
+            .onAppear(perform: {promptForWorkingDirectoryPermission()})
         
         
         
@@ -124,7 +178,7 @@ struct ContentView_Previews: PreviewProvider {
     }
 }
 
-private func promptForWorkingDirectoryPermission() -> URL? {
+private func promptForWorkingDirectoryPermission() -> Void {
     let openPanel = NSOpenPanel()
     openPanel.message = "Choose your directory"
     openPanel.prompt = "Choose"
@@ -135,7 +189,6 @@ private func promptForWorkingDirectoryPermission() -> URL? {
     
     let response = openPanel.runModal()
     print(openPanel.urls)
-    return openPanel.urls.first
 }
 
 
