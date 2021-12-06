@@ -142,9 +142,9 @@ struct ContentView: View {
                 showArguments = !showArguments
             })
             
-            if (showArguments) {
+            if (showArguments && argumentsArray.count > 0) {
                 HStack(alignment: .top) {
-                    ForEach((0...max(0,argumentsArray.count-1)), id: \.self) { i in
+                    ForEach((0...argumentsArray.count-1), id: \.self) { i in
                         HStack {
                             Text(argumentsArray[i])
                         }
@@ -157,16 +157,27 @@ struct ContentView: View {
                     
                     // Only show first four results
                     ForEach((0...min(3, searchResultsArray.count-1)), id: \.self) { i in
+                        let filePath : String = searchResultsArray[i]
+                        
                         VStack{
-                            VStack {
-                                MyPreview(fileName: searchResultsArray[i]).frame(width: 100, height: 100, alignment: .center)
-                                Text(searchResultsArray[i].components(separatedBy: "/").last ?? "")
-                            }
-                        }.contextMenu {
+                            MyPreview(fileName: filePath).frame(width: 100, height: 100, alignment: .center)
+                            Spacer().frame(height: 10)
+                            Text(filePath.components(separatedBy: "/").last ?? "")
+                        }.padding(5)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2, perform: {
+                            NSWorkspace.shared.open(URL(fileURLWithPath: filePath))
+                            
+                        })
+                        .contextMenu {
+                            Button("Open", action: {
+                                NSWorkspace.shared.open(URL(fileURLWithPath: filePath))
+                            })
                             Button("Show in Finder", action: {
-                                NSWorkspace.shared.selectFile(searchResultsArray[i], inFileViewerRootedAtPath: "/Users/")
+                                NSWorkspace.shared.selectFile(filePath, inFileViewerRootedAtPath: "/Users/")
                             })
                         }
+                        
                         .onTapGesture {
                             selectedColor[i] = (selectedColor[i] == .blue) ? Color.clear : Color.blue
                             for l in 0...selectedColor.count-1 {
@@ -187,23 +198,35 @@ struct ContentView: View {
                     // Only show first four results
                     if (searchResultsArray.count - 1 >= 4) {
                         ForEach((4...min(7, searchResultsArray.count-1)), id: \.self) { i in
+                            let filePath = searchResultsArray[i]
                             VStack{
-                                VStack {
-                                    MyPreview(fileName: searchResultsArray[i]).frame(width: 100, height: 100, alignment: .center)
-                                    Text(searchResultsArray[i].components(separatedBy: "/").last ?? "")
-                                }.padding(5)
-                            }.contextMenu {
-                                Button("Show in Finder", action: {
-                                    NSWorkspace.shared.selectFile(searchResultsArray[i], inFileViewerRootedAtPath: "/Users/")
+                                MyPreview(fileName: filePath).frame(width: 100, height: 100, alignment: .center)
+                                Spacer().frame(height: 10)
+                                Text(filePath.components(separatedBy: "/").last ?? "")
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture(count: 2, perform: {
+                                NSWorkspace.shared.open(URL(fileURLWithPath: filePath))
+                                
+                            })
+                            .contextMenu {
+                                Button("Open", action: {
+                                    NSWorkspace.shared.open(URL(fileURLWithPath: filePath))
                                 })
-                            }.onTapGesture {
+                                Button("Show in Finder", action: {
+                                    NSWorkspace.shared.selectFile(filePath, inFileViewerRootedAtPath: "/Users/")
+                                })
+                            }.onTapGesture(count: 1, perform: {
                                 selectedColor[i] = (selectedColor[i] == .blue) ? Color.clear : Color.blue
                                 for l in 0...selectedColor.count-1 {
                                     if (l != i) {
                                         selectedColor[l] = Color.clear
                                     }
                                 }
-                            }
+                            }).gesture(TapGesture(count: 2).onEnded {
+                                // Opent a file on double click
+                                print("double clicked")
+                            })
                             .background(selectedColor[i])
                             .cornerRadius(10)
                         }
