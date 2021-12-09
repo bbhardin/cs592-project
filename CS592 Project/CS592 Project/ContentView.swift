@@ -18,21 +18,27 @@ func parseSEMPREOutput(input: String) -> [String] {
     var mdfindQuery = ""
     let terms = input.components(separatedBy: "(")
     for term in terms {
+        print(term)
         let kindAndName = term.components(separatedBy: " ")
         let kind = kindAndName.first
-        var query = kindAndName.last ?? ""
+        var query = ""
+        if (kindAndName.count > 1) {
+            query = kindAndName[1]
+        }
+        
         query.removeAll(where: {$0 == ")"})
         
         switch(kind) {
         case "type":
             // Options accepted by mdfind for kind/type
             let kindOptions = ["application", "applications", "app", "audio", "music", "bookmark", "bookmarks", "contact", "contacts", "email", "emails", "mail message", "mail messages", "folder", "folders", "font", "fonts", "event", "events", "todo", "todos", "to do", "to dos", "image", "images", "movie", "movies", "pdf", "pdfs", "system preferences", "preferences", "presentations", "presentation"]
-            
             if (kindOptions.contains(query)) {
+                print("here a queryr", query)
                 mdfindQuery += " kind:" + query
                 argumentsArray.append("kind")
                 argumentsArray.append(query)
             }
+            
             break
         case "year":
             
@@ -69,6 +75,8 @@ func parseSEMPREOutput(input: String) -> [String] {
         }
     }
     
+    // Todo: prioritize documents in documents, desktop and downloads folders. Run queries on those first, merge the queries, and then return all the results
+    
     print(mdfindQuery)
     return argumentsArray
     
@@ -82,6 +90,10 @@ struct ContentView: View {
     @State var showResults = false
     @State var selectedColor = [Color](repeatElement(Color.clear, count: 8))
     @State var argumentsArray : [String] = []
+    
+    @State var field1 = ""
+    @State var field2 = ""
+    @State var field3 = ""
     
     // Show mdfind arguments
     @State var showArguments = false
@@ -108,7 +120,8 @@ struct ContentView: View {
                     let stdOut = Pipe()
                     let process = Process()
                     process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-                    process.arguments = [self.searchQuery]
+                    //process.arguments = [self.searchQuery]
+                    process.arguments = argumentsArray
                     process.standardOutput = stdOut
                     
 //                    process.waitUntilExit()
@@ -120,6 +133,7 @@ struct ContentView: View {
                         
                     let data = stdOut.fileHandleForReading.readDataToEndOfFile()
                     let output = String(data: data, encoding: .utf8)!
+                    //print(output)
                     
                     searchResults = output
                     searchResultsArray = searchResults.components(separatedBy: "\n").filter({ $0 != ""})
@@ -128,6 +142,9 @@ struct ContentView: View {
                     } else {
                         showResults = false
                     }
+                    
+                    // Todo: Don't keep this
+                    field1 = argumentsArray[0]
                 
                     
                 }) {
@@ -138,7 +155,7 @@ struct ContentView: View {
             }
             .padding(.top)
             
-            Button("Show Options", action: {
+            Button("Show/Hide Options", action: {
                 showArguments = !showArguments
             })
             
@@ -146,9 +163,19 @@ struct ContentView: View {
                 HStack(alignment: .top) {
                     ForEach((0...argumentsArray.count-1), id: \.self) { i in
                         HStack {
-                            Text(argumentsArray[i])
+                            if (i % 2 == 0) {
+                                // It's a label
+                                Text(argumentsArray[i])
+                            } else {
+                                // It's a modifiable value
+                                TextField("Enter your search", text: self.$argumentsArray[i]).frame(width: 100)
+                            }
+                            
                         }
                     }
+                    Button("Search with these options", action: {
+                        
+                    })
                 }
             }
             
