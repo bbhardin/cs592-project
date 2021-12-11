@@ -16,69 +16,152 @@ func parseSEMPREOutput(input: String) -> [String] {
     var argumentsArray : [String] = []
     
     var mdfindQuery = ""
-    let terms = input.components(separatedBy: "(")
+    
+    let terms = input.lowercased().components(separatedBy: "(")
     for term in terms {
         print(term)
-        let kindAndName = term.components(separatedBy: " ")
-        let kind = kindAndName.first
-        var query = ""
-        if (kindAndName.count > 1) {
-            query = kindAndName[1]
-        }
-        
-        query.removeAll(where: {$0 == ")"})
-        
-        switch(kind) {
-        case "type":
-            // Options accepted by mdfind for kind/type
-            let kindOptions = ["application", "applications", "app", "audio", "music", "bookmark", "bookmarks", "contact", "contacts", "email", "emails", "mail message", "mail messages", "folder", "folders", "font", "fonts", "event", "events", "todo", "todos", "to do", "to dos", "image", "images", "movie", "movies", "pdf", "pdfs", "system preferences", "preferences", "presentations", "presentation"]
-            if (kindOptions.contains(query)) {
-                print("here a queryr", query)
-                mdfindQuery += " kind:" + query
-                argumentsArray.append("kind")
-                argumentsArray.append(query)
+        var term2 = term.components(separatedBy: "\"")
+        if (term2.count > 1) {
+            
+            term2.removeAll(where: {$0 == "\""})
+            print("removed quotes ", term2)
+        let kindAndName = term2[1].components(separatedBy: " ")
+        print("kindandname ", kindAndName)
+            var query = ""
+            var kind = ""
+            if (kindAndName.count == 2) {
+                 kind = kindAndName[0]
+                query = kindAndName[1]
+            }
+            else if (kindAndName.count == 3) {
+                kind = kindAndName[1]
+                query = kindAndName[2]
             }
             
-            break
-        case "year":
+            print("kind and query:", kind, query)
             
-            if (query == Calendar.current.component(.year, from: Date()).description) {
-                query = "this year"
-            }
+            query.removeAll(where: {$0 == ")"})
             
-            // Options accepted by mdfind for date
-            let dateOptions = ["today", "yesterday", "this week", "this month", "this year", "tomorrow", "next month", "next week", "next year"]
-            
-            if (dateOptions.contains(query)) {
-                mdfindQuery += " date:" + query
+            switch(kind) {
+            case "kind":
+                // Options accepted by mdfind for kind/type
+                let kindOptions = ["application", "applications", "app", "audio", "music", "bookmark", "bookmarks", "contact", "contacts", "email", "emails", "mail message", "mail messages", "folder", "folders", "font", "fonts", "event", "events", "todo", "todos", "to do", "to dos", "image", "images", "movie", "movies", "pdf", "pdfs", "system preferences", "preferences", "presentations", "presentation"]
+                if (kindOptions.contains(query)) {
+                    print("right here")
+                    mdfindQuery += "(kMDItemDisplayName == *.key*)"
+                    print("md is ", mdfindQuery)
+//                    mdfindQuery += " kind:" + query
+                    argumentsArray.append("kind")
+                    argumentsArray.append(query)
+                }
+                
+                break
+            case "year":
+                
+                // convert year to int and subtract from current year
+                let yearInt = Int(query)!
+                let year_diff = Calendar.current.component(.year, from: Date()) - yearInt
+                if (year_diff == 0) {
+                    query = "this year"
+                    // Options accepted by mdfind for date
+                    let dateOptions = ["today", "yesterday", "this week", "this month", "this year", "tomorrow", "next month", "next week", "next year"]
+                    mdfindQuery += " date:" + query
+                } else {
+                    query = " && (kMDItemFSContentChangeDate >= $time.this_year(-\(year_diff)))"
+                    mdfindQuery += query
+                }
+                
+                
                 argumentsArray.append("date")
                 argumentsArray.append(query)
-            }
-            print(query)
-            break
-        case "folder":
-            let folderOptions = ["Documents", "Downloads", "Desktop"]
-            if (folderOptions.contains(query)) {
-                mdfindQuery += " -onlyin " + query
-                argumentsArray.append("-onlyin")
+                print(query)
+                break
+            case "folder":
+                let folderOptions = ["Documents", "Downloads", "Desktop"]
+                if (folderOptions.contains(query)) {
+                    mdfindQuery += " -onlyin " + query
+                    argumentsArray.append("-onlyin")
+                    argumentsArray.append(query)
+                }
+                
+                break
+            case "downloaded_from":
+                mdfindQuery += " \"kMDItemWhereFroms:" + query + "\""
+                argumentsArray.append("Where From")
                 argumentsArray.append(query)
+                break
+            default:
+                break
             }
-            
-            break
-        case "downloaded_from":
-            mdfindQuery += " \"kMDItemWhereFroms:" + query + "\""
-            argumentsArray.append("Where From")
-            argumentsArray.append(query)
-            break
-        default:
-            break
         }
+        
     }
     
     // Todo: prioritize documents in documents, desktop and downloads folders. Run queries on those first, merge the queries, and then return all the results
     
-    print(mdfindQuery)
-    return argumentsArray
+    print("mdfind Query: ", mdfindQuery)
+    return [mdfindQuery]
+    
+}
+
+func runSEMPRE(query: String) -> String {
+    
+    
+    
+    let stdOut = Pipe()
+    let process = Process()
+    // TODO: File path will need to be changed. Could prompt the user to show the location when they start the app
+    //FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)
+    process.executableURL = URL(fileURLWithPath: "/Users/Ben/Downloads/sempre/test.sh")
+    process.arguments = ["can you find slides from 3 years ago?"]
+    process.standardOutput = stdOut
+
+    
+//                    process.waitUntilExit()
+    var output = ""
+    
+    do {
+        print("running")
+        try process.run()
+        process.waitUntilExit()
+        print("ran")
+        
+        let data = stdOut.fileHandleForReading.readDataToEndOfFile()
+        
+        output = String(data: data, encoding: .utf8)!
+        print("output ", output)
+        
+    }
+    catch{ print(error)}
+    
+    print("Finished running SEMPRE")
+    let file = "test"
+    //let data = stdOut.fileHandleForReading.readDataToEndOfFile()
+    //if let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+
+    let fileURL = URL(fileURLWithPath: "/Users/Ben/Downloads/sempre/test")
+
+    //reading
+    do {
+        let text2 = try String(contentsOf: fileURL, encoding: .utf8)
+        print("printing output")
+        var split = text2.components(separatedBy: "Top formula")
+        output = split.last ?? ""
+        split = output.components(separatedBy: "Top value")
+        output = split.first ?? ""
+        output = output.replacingOccurrences(of: "{", with: "")
+        output = output.replacingOccurrences(of: "}", with: "")
+        print(output)
+        print("that was output")
+    }
+    catch {print("Couldn't find sempre file output")}
+    //}
+    
+    
+        
+    
+
+    return output
     
 }
 
@@ -115,24 +198,41 @@ struct ContentView: View {
                         return
                     }
                     
-                    argumentsArray = parseSEMPREOutput(input: searchQuery)
+                    // Run sempre and get output
+                    let sempreOutput = runSEMPRE(query: searchQuery)
+                    
+                    argumentsArray = parseSEMPREOutput(input: sempreOutput)
+                    argumentsArray = ["kind:","docx", "date:","this week"]
+                    //argumentsArray = ["kind:presentation", "date:this year"]
+                    print("arguments array is ", argumentsArray)
                     
                     let stdOut = Pipe()
                     let process = Process()
                     process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-                    //process.arguments = [self.searchQuery]
-                    process.arguments = argumentsArray
+                    
+                    var formattedArgs : [String] = []
+                    if (argumentsArray.count - 2 > 0) {
+                        for i in stride(from: 0, to: argumentsArray.count-1, by: 2) {
+                            let arg = argumentsArray[i] + argumentsArray[i+1]
+                            formattedArgs.append(arg)
+                        }
+                    }
+                    print("Formatted args: ", formattedArgs)
+                    
+                    
+                    process.arguments = formattedArgs
                     process.standardOutput = stdOut
                     
 //                    process.waitUntilExit()
-                    
+                    var output = ""
                     do {
                             try process.run()
+                        let data = stdOut.fileHandleForReading.readDataToEndOfFile()
+                        output = String(data: data, encoding: .utf8)!
                         }
                     catch{ print(error)}
                         
-                    let data = stdOut.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(data: data, encoding: .utf8)!
+                    
                     //print(output)
                     
                     searchResults = output
@@ -145,6 +245,7 @@ struct ContentView: View {
                     
                     // Todo: Don't keep this
                     field1 = argumentsArray[0]
+                    //close(stdOut)
                 
                     
                 }) {
@@ -174,7 +275,41 @@ struct ContentView: View {
                         }
                     }
                     Button("Search with these options", action: {
+                        let stdOut = Pipe()
+                        let process = Process()
+                        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+                        var formattedArgs : [String] = []
+                        if (argumentsArray.count - 2 > 0) {
+                            for i in stride(from: 0, to: argumentsArray.count-1, by: 2) {
+                                let arg = argumentsArray[i] + argumentsArray[i+1]
+                                formattedArgs.append(arg)
+                            }
+                        }
+                        print("Formatted args: ", formattedArgs)
                         
+                        
+                        process.arguments = formattedArgs
+                        process.standardOutput = stdOut
+                        
+    //                    process.waitUntilExit()
+                        var output = ""
+                        do {
+                                try process.run()
+                            let data = stdOut.fileHandleForReading.readDataToEndOfFile()
+                            output = String(data: data, encoding: .utf8)!
+                            }
+                        catch{ print(error)}
+                            
+                        
+                        print(output)
+                        
+                        searchResults = output
+                        searchResultsArray = searchResults.components(separatedBy: "\n").filter({ $0 != ""})
+                        if (searchResultsArray.count != 0) {
+                            showResults = true
+                        } else {
+                            showResults = false
+                        }
                     })
                 }
             }
