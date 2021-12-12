@@ -8,17 +8,357 @@
 import SwiftUI
 import Quartz
 
-func parseSEMPREOutput(input: String) -> [String] {
-    // Example: (and (type presentation) (year 2019) (folder Downloads) (downloaded_from xyz.com))
+func parseUserEdits(editedAndArgs: [String], editedOrArgs: [String]) -> (String, [String], [String]) {
+    // Yes this is basically duplicated code :(
     
-    print("here")
+    var andArgs : [String] = []
+    var andArgsToShow : [String] = [] // Args to allow the user to edit
+    var orArgs : [String] = []
+    var orArgsToShow : [String] = [] // Args to allow the user to edit
     
-    var argumentsArray : [String] = []
+    
+    // Assumes a singular "and" with up to one nested "or" at the end
+    // Future work should parse this string into a tree of conjunctions to avoid this
+    
+    var haveFoundOr = false
+    
+    let allArgs = editedAndArgs + editedOrArgs
+    for i in stride(from: 0, to: allArgs.count-1, by: 2) {
+        let term = allArgs[i]
+        
+            var arg = ""
+            var arg1ToShow = ""
+            var arg2ToShow = ""
+            
+            let kind = allArgs[i]
+            let name1 = allArgs[i+1]
+            
+            
+            // Current year
+            let date = Date()
+            let calendar = Calendar.current
+            let components = calendar.dateComponents([.year, .month], from: date)
+            let year = components.year!
+            
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            
+            switch (kind) {
+            case "kind":
+                if (name1 == "presentation") {
+                    arg = "(kMDItemFSName == *.pptx || kMDItemFSName == *.key)"
+                    arg1ToShow = "kind"
+                    arg2ToShow = "presentation"
+                } else if (name1 == "PDF") {
+                    arg = "kMDItemFSName == *.pdf"
+                    arg1ToShow = "kind"
+                    arg2ToShow = "pdf"
+                } else if (name1 == "Microsoft") {
+                    // Full string is Microsoft Word Document
+                    arg = "(kMDItemFSName == *.docx || kMDItemFSName == *.pages)"
+                    arg1ToShow = "kind"
+                    arg2ToShow = "document"
+                }
+                break
+            case "created in":
+                if (Int(name1) == nil) {
+                    // month
+                    let moNo = convertMonthToNumber(month: name1)
+                    let currentMoNo = components.month!
+                    let monthDiff = currentMoNo - moNo
+                    
+                    arg = "kMDItemFSCreationDate >= $time.this_month(-\(monthDiff)) && kMDItemFSCreationDate <= $time.this_month(-\(monthDiff - 1))"
+        
+                } else {
+                    // year
+                    let earlierYear = Int(name1)
+                    let yearDiff = year - (earlierYear ?? 2021)
+                    
+                    arg = "kMDItemFSCreationDate >= $time.this_year(-\(yearDiff)) && kMDItemFSCreationDate <= $time.this_year(-\(yearDiff - 1))"
+                    
+                }
+                arg1ToShow = "created in"
+                arg2ToShow = name1
+                
+                break
+            case "modified on":
+                // Note: for modified, name1 == "Month" and name2 == the actual month
+                // 'kMDItemContentModificationDate < $time.iso(2018-10-30T16:00:00) && kMDItemContentModificationDate > $time.iso(2018-10-30T10:00:00)'
+                print("modified on ", name1)
+                let moNo = convertMonthToNumber(month: name1)
+                let currentMoNo = components.month!
+                let monthDiff = currentMoNo - moNo
+                
+                // kMDItemContentModificationDate
+                
+                arg = "kMDItemContentModificationDate >= $time.this_month(-\(monthDiff)) && kMDItemContentModificationDate <= $time.this_month(-\(monthDiff - 1))"
+//                    var lowerDateComponents = DateComponents()
+//                    lowerDateComponents.year = year
+//                    lowerDateComponents.month = moNo
+//                    lowerDateComponents.day = 1
+//                    let userCalendar = Calendar(identifier: .gregorian) // since the components above (like year 1980) are for Gregorian
+//                    let earlyDate = userCalendar.date(from: lowerDateComponents)
+//                    let lowerDateString = formatter.string(from: earlyDate!)
+//
+//                    var upperDateComponents = DateComponents()
+//                    upperDateComponents.year = year
+//                    upperDateComponents.month = moNo
+//                    upperDateComponents.day = getLastDay(month: moNo)
+//                    let lateDate = userCalendar.date(from: lowerDateComponents)
+//                    let upperDateString = formatter.string(from: lateDate!)
+                arg1ToShow = "modified on"
+                arg2ToShow = name1
+                
+                break
+            case "from":
+                // name2 is where downloaded from
+                arg = "kMDItemWhereFroms == \(name1)"
+                arg1ToShow = "from"
+                arg2ToShow = name1
+                break
+            case "name includes":
+                // name2 should be included in file
+                arg = "kMDItemFSName == *\(name1)"
+                arg1ToShow = "name includes"
+                arg2ToShow = name1
+                break
+            case "size":
+                if (name1 == "small") {
+                    // Small file
+                    arg = "kMDItemFSSize <= 5000"
+                    arg1ToShow = "size"
+                    arg2ToShow = "small"
+                } else {
+                    print("large")
+                    // Large file
+                    arg = "kMDItemFSSize >= 5000"
+                    arg1ToShow = "size"
+                    arg2ToShow = "large"
+                }
+                break
+            default:
+                break
+            }
+            
+            
+            if (i >= andArgs.count) {
+                // Add to or arguments
+                orArgs.append(arg)
+                orArgsToShow.append(arg1ToShow)
+                orArgsToShow.append(arg2ToShow)
+            } else {
+                // Add to and arguments
+                andArgs.append(arg)
+                andArgsToShow.append(arg1ToShow)
+                andArgsToShow.append(arg2ToShow)
+            }
+        
+    }
     
     var mdfindQuery = ""
+    if (andArgs.count > 0) {
+        //mdfindQuery = "\'"
+    }
+
+    for (index, arg) in andArgs.enumerated() {
+        mdfindQuery += " " + arg
+        if (index != andArgs.count - 1 || orArgs.count != 0) {
+            mdfindQuery += " &&"
+        }
+    }
+    
+    if (orArgs.count != 0) {
+        mdfindQuery += "("
+    }
+    for (index, arg) in orArgs.enumerated() {
+        mdfindQuery += " (" + arg + ")"
+        if (index != orArgs.count - 1) {
+            mdfindQuery += " ||"
+        }
+    }
+    
+    if (orArgs.count != 0) {
+        mdfindQuery += ")"
+    }
+    
+    if (mdfindQuery != "") {
+        //mdfindQuery += "\'"
+    }
+    
+    
+    // Todo: prioritize documents in documents, desktop and downloads folders. Run queries on those first, merge the queries, and then return all the results
+    
+    print("mdfind Query: ", mdfindQuery)
+    return (mdfindQuery, andArgsToShow, orArgsToShow)
+    
+}
+
+
+func parseSEMPREOutput(input: String) -> (String, [String], [String]) {
+    // Example: (and (type presentation) (year 2019) (folder Downloads) (downloaded_from xyz.com))
+    
+    var andArgs : [String] = []
+    var andArgsToShow : [String] = [] // Args to allow the user to edit
+    var orArgs : [String] = []
+    var orArgsToShow : [String] = [] // Args to allow the user to edit
+    
+    
+    // Assumes a singular "and" with up to one nested "or" at the end
+    // Future work should parse this string into a tree of conjunctions to avoid this
+    
+    print("about to parse query!")
+    
+    var haveFoundOr = false
     
     let terms = input.lowercased().components(separatedBy: "(")
     for term in terms {
+        
+        if (term.contains("string")) {
+            if let termSubstring = term.range(of: "(?<=\")[^\"]+", options: .regularExpression) {
+                // Term substring is the part between quotes
+                var arg = ""
+                var arg1ToShow = ""
+                var arg2ToShow = ""
+                
+                let kindAndName = term.substring(with: termSubstring).components(separatedBy: " ")
+                print("kind and name is ", kindAndName)
+                let kind = kindAndName[0]
+                let name1 = kindAndName[1]
+                var name2 = ""
+                if (kindAndName.count > 2) {
+                    name2 = kindAndName[2]
+                }
+                
+                
+                // Current year
+                let date = Date()
+                let calendar = Calendar.current
+                let components = calendar.dateComponents([.year, .month], from: date)
+                let year = components.year!
+
+                
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+                formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                
+                switch (kind) {
+                case "kind":
+                    if (name1 == "presentation") {
+                        arg = "(kMDItemFSName == *.pptx || kMDItemFSName == *.key)"
+                        arg1ToShow = "kind"
+                        arg2ToShow = "presentation"
+                    } else if (name1 == "PDF") {
+                        arg = "pdf"
+                        arg1ToShow = "kind"
+                        arg2ToShow = "pdf"
+                    } else if (name1 == "document") {
+                        // Full string is Microsoft Word Document
+                        arg = "(kMDItemFSName == *.docx || kMDItemFSName == *.pages)"
+                        arg1ToShow = "kind"
+                        arg2ToShow = "document"
+                    }
+                    break
+                case "created":
+                    if (name1 == "Month") {
+                        // month
+                        let moNo = convertMonthToNumber(month: name2)
+                        let currentMoNo = components.month!
+                        let monthDiff = currentMoNo - moNo
+                        
+                        arg = "kMDItemFSCreationDate >= $time.this_month(-\(monthDiff)) && kMDItemFSCreationDate <= $time.this_month(-\(monthDiff - 1))"
+            
+                    } else {
+                        // year
+                        let earlierYear = Int(name2)
+                        let yearDiff = year - earlierYear!
+                        
+                        arg = "kMDItemFSCreationDate >= $time.this_year(-\(yearDiff)) && kMDItemFSCreationDate <= $time.this_year(-\(yearDiff - 1))"
+                        
+                    }
+                    arg1ToShow = "created in"
+                    arg2ToShow = name2
+                    
+                    break
+                case "modified":
+                    // Note: for modified, name1 == "Month" and name2 == the actual month
+                    // 'kMDItemContentModificationDate < $time.iso(2018-10-30T16:00:00) && kMDItemContentModificationDate > $time.iso(2018-10-30T10:00:00)'
+                    let moNo = convertMonthToNumber(month: name2)
+                    let currentMoNo = components.month!
+                    let monthDiff = currentMoNo - moNo
+                    
+                    // kMDItemContentModificationDate
+                    
+                    arg = "kMDItemContentModificationDate >= $time.this_month(-\(monthDiff)) && kMDItemContentModificationDate <= $time.this_month(-\(monthDiff - 1))"
+//                    var lowerDateComponents = DateComponents()
+//                    lowerDateComponents.year = year
+//                    lowerDateComponents.month = moNo
+//                    lowerDateComponents.day = 1
+//                    let userCalendar = Calendar(identifier: .gregorian) // since the components above (like year 1980) are for Gregorian
+//                    let earlyDate = userCalendar.date(from: lowerDateComponents)
+//                    let lowerDateString = formatter.string(from: earlyDate!)
+//
+//                    var upperDateComponents = DateComponents()
+//                    upperDateComponents.year = year
+//                    upperDateComponents.month = moNo
+//                    upperDateComponents.day = getLastDay(month: moNo)
+//                    let lateDate = userCalendar.date(from: lowerDateComponents)
+//                    let upperDateString = formatter.string(from: lateDate!)
+                    arg1ToShow = "modified on"
+                    arg2ToShow = name2
+                    
+                    break
+                case "where":
+                    if (name1 == "from") {
+                        // name2 is where downloaded from
+                        arg = "kMDItemWhereFroms == \(name2)"
+                        arg1ToShow = "from"
+                        arg2ToShow = name2
+                    } else {
+                        // name2 should be included in file
+                        arg = "kMDItemFSName == *\(name2)"
+                        arg1ToShow = "name includes"
+                        arg2ToShow = name2
+                    }
+                    break
+                case "size":
+                    if (name1.contains("<")) {
+                        // Small file
+                        arg = "kMDItemFSSize <= 5000"
+                        arg1ToShow = "size"
+                        arg2ToShow = "small"
+                    } else {
+                        // Large file
+                        arg = "kMDItemFSSize >= 5000"
+                        arg1ToShow = "size"
+                        arg2ToShow = "large"
+                    }
+                    break
+                default:
+                    break
+                }
+                
+                
+                if (haveFoundOr) {
+                    // Add to or arguments
+                    orArgs.append(arg)
+                    orArgsToShow.append(arg1ToShow)
+                    orArgsToShow.append(arg2ToShow)
+                } else {
+                    // Add to and arguments
+                    andArgs.append(arg)
+                    andArgsToShow.append(arg1ToShow)
+                    andArgsToShow.append(arg2ToShow)
+                }
+            }
+            
+        }
+        else if (term == "(or") {
+            haveFoundOr = true
+        }
+        
+        
+        /*
         print(term)
         var term2 = term.components(separatedBy: "\"")
         if (term2.count > 1) {
@@ -51,8 +391,8 @@ func parseSEMPREOutput(input: String) -> [String] {
                     mdfindQuery += "(kMDItemDisplayName == *.key*)"
                     print("md is ", mdfindQuery)
 //                    mdfindQuery += " kind:" + query
-                    argumentsArray.append("kind")
-                    argumentsArray.append(query)
+                    //argumentsArray.append("kind")
+                    //argumentsArray.append(query)
                 }
                 
                 break
@@ -72,35 +412,66 @@ func parseSEMPREOutput(input: String) -> [String] {
                 }
                 
                 
-                argumentsArray.append("date")
-                argumentsArray.append(query)
+                //argumentsArray.append("date")
+                //argumentsArray.append(query)
                 print(query)
                 break
             case "folder":
                 let folderOptions = ["Documents", "Downloads", "Desktop"]
                 if (folderOptions.contains(query)) {
                     mdfindQuery += " -onlyin " + query
-                    argumentsArray.append("-onlyin")
-                    argumentsArray.append(query)
+                    //argumentsArray.append("-onlyin")
+                    //argumentsArray.append(query)
                 }
                 
                 break
             case "downloaded_from":
                 mdfindQuery += " \"kMDItemWhereFroms:" + query + "\""
-                argumentsArray.append("Where From")
-                argumentsArray.append(query)
+                //argumentsArray.append("Where From")
+                //argumentsArray.append(query)
                 break
             default:
                 break
             }
-        }
+        }*/
         
     }
+    
+    var mdfindQuery = ""
+    if (andArgs.count > 0) {
+        //mdfindQuery = "\'"
+    }
+
+    for (index, arg) in andArgs.enumerated() {
+        mdfindQuery += " " + arg
+        if (index != andArgs.count - 1 || orArgs.count != 0) {
+            mdfindQuery += " &&"
+        }
+    }
+    
+    if (orArgs.count != 0) {
+        mdfindQuery += "("
+    }
+    for (index, arg) in orArgs.enumerated() {
+        mdfindQuery += " (" + arg + ")"
+        if (index != orArgs.count - 1) {
+            mdfindQuery += " ||"
+        }
+    }
+    
+    if (orArgs.count != 0) {
+        mdfindQuery += ")"
+    }
+    
+    if (mdfindQuery != "") {
+        //mdfindQuery += "\'"
+    }
+    
     
     // Todo: prioritize documents in documents, desktop and downloads folders. Run queries on those first, merge the queries, and then return all the results
     
     print("mdfind Query: ", mdfindQuery)
-    return [mdfindQuery]
+    return (mdfindQuery, andArgsToShow, orArgsToShow)
     
 }
 
@@ -113,11 +484,9 @@ func runSEMPRE(query: String) -> String {
     // TODO: File path will need to be changed. Could prompt the user to show the location when they start the app
     //FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)
     process.executableURL = URL(fileURLWithPath: "/Users/Ben/Downloads/sempre/test.sh")
-    process.arguments = ["can you find slides from 3 years ago?"]
+    process.arguments = [query]
     process.standardOutput = stdOut
 
-    
-//                    process.waitUntilExit()
     var output = ""
     
     do {
@@ -154,15 +523,46 @@ func runSEMPRE(query: String) -> String {
         print(output)
         print("that was output")
     }
-    catch {print("Couldn't find sempre file output")}
-    //}
-    
-    
+    catch {
+        print("Couldn't find sempre file output")
+        return "error"
         
-    
+    }
 
     return output
     
+}
+
+func runSpotlight(argumentsArray: [String]) -> String {
+    let stdOut = Pipe()
+    let process = Process()
+    
+    // Run the mdfind (Spotlight) process
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+//    var formattedArgs : [String] = []
+//    if (argumentsArray.count - 2 > 0) {
+//        for i in stride(from: 0, to: argumentsArray.count-1, by: 2) {
+//            let arg = argumentsArray[i] + argumentsArray[i+1]
+//            formattedArgs.append(arg)
+//        }
+//    }
+//    print("Formatted args: ", formattedArgs)
+    
+    //print("args array ", argumentsArray)
+    process.arguments = argumentsArray
+    process.standardOutput = stdOut
+    
+    var output = ""
+    do {
+            try process.run()
+        let data = stdOut.fileHandleForReading.readDataToEndOfFile()
+        output = String(data: data, encoding: .utf8)!
+        }
+    catch{ print(error)}
+    
+    //print(output)
+    
+    return output
 }
 
 struct ContentView: View {
@@ -173,6 +573,8 @@ struct ContentView: View {
     @State var showResults = false
     @State var selectedColor = [Color](repeatElement(Color.clear, count: 8))
     @State var argumentsArray : [String] = []
+    @State var andArguments : [String] = []
+    @State var orArguments : [String] = []
     
     @State var field1 = ""
     @State var field2 = ""
@@ -200,42 +602,19 @@ struct ContentView: View {
                     
                     // Run sempre and get output
                     let sempreOutput = runSEMPRE(query: searchQuery)
-                    
-                    argumentsArray = parseSEMPREOutput(input: sempreOutput)
-                    argumentsArray = ["kind:","docx", "date:","this week"]
-                    //argumentsArray = ["kind:presentation", "date:this year"]
-                    print("arguments array is ", argumentsArray)
-                    
-                    let stdOut = Pipe()
-                    let process = Process()
-                    process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-                    
-                    var formattedArgs : [String] = []
-                    if (argumentsArray.count - 2 > 0) {
-                        for i in stride(from: 0, to: argumentsArray.count-1, by: 2) {
-                            let arg = argumentsArray[i] + argumentsArray[i+1]
-                            formattedArgs.append(arg)
-                        }
+                    if (sempreOutput == "error") {
+                        Text("SEMPRE parse error")
+                        return;
                     }
-                    print("Formatted args: ", formattedArgs)
+                    
+                    let (mdfindQuery, andArgsToShow, orArgsToShow) = parseSEMPREOutput(input: sempreOutput)
+                    argumentsArray = andArgsToShow + orArgsToShow
+                    andArguments = andArgsToShow
+                    orArguments = orArgsToShow
                     
                     
-                    process.arguments = formattedArgs
-                    process.standardOutput = stdOut
-                    
-//                    process.waitUntilExit()
-                    var output = ""
-                    do {
-                            try process.run()
-                        let data = stdOut.fileHandleForReading.readDataToEndOfFile()
-                        output = String(data: data, encoding: .utf8)!
-                        }
-                    catch{ print(error)}
-                        
-                    
-                    //print(output)
-                    
-                    searchResults = output
+                    searchResults = runSpotlight(argumentsArray: [mdfindQuery])
+                    print("Search results: ", searchResults)
                     searchResultsArray = searchResults.components(separatedBy: "\n").filter({ $0 != ""})
                     if (searchResultsArray.count != 0) {
                         showResults = true
@@ -244,7 +623,7 @@ struct ContentView: View {
                     }
                     
                     // Todo: Don't keep this
-                    field1 = argumentsArray[0]
+                    //field1 = argumentsArray[0]
                     //close(stdOut)
                 
                     
@@ -275,35 +654,21 @@ struct ContentView: View {
                         }
                     }
                     Button("Search with these options", action: {
-                        let stdOut = Pipe()
-                        let process = Process()
-                        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-                        var formattedArgs : [String] = []
-                        if (argumentsArray.count - 2 > 0) {
-                            for i in stride(from: 0, to: argumentsArray.count-1, by: 2) {
-                                let arg = argumentsArray[i] + argumentsArray[i+1]
-                                formattedArgs.append(arg)
+                        let andCount = andArguments.count
+                        andArguments = []
+                        orArguments = []
+                        for (index, arg) in argumentsArray.enumerated() {
+                            if (index < andCount) {
+                                andArguments.append(arg)
+                            } else {
+                                orArguments.append(arg)
                             }
                         }
-                        print("Formatted args: ", formattedArgs)
-                        
-                        
-                        process.arguments = formattedArgs
-                        process.standardOutput = stdOut
-                        
-    //                    process.waitUntilExit()
-                        var output = ""
-                        do {
-                                try process.run()
-                            let data = stdOut.fileHandleForReading.readDataToEndOfFile()
-                            output = String(data: data, encoding: .utf8)!
-                            }
-                        catch{ print(error)}
-                            
-                        
-                        print(output)
-                        
-                        searchResults = output
+                        let (mdFindQuery, andArgs, orArgs) = parseUserEdits(editedAndArgs: andArguments, editedOrArgs: orArguments)
+                        argumentsArray = andArgs + orArgs
+                        andArguments = andArgs
+                        orArguments = orArgs
+                        searchResults = runSpotlight(argumentsArray: [mdFindQuery])
                         searchResultsArray = searchResults.components(separatedBy: "\n").filter({ $0 != ""})
                         if (searchResultsArray.count != 0) {
                             showResults = true
@@ -470,3 +835,26 @@ struct MyPreview: NSViewRepresentable {
 
 }
 
+func convertMonthToNumber(month: String) -> Int {
+    // Get current month number. Special thanks: https://stackoverflow.com/questions/30447058/convert-long-month-name-to-int
+    let df = DateFormatter()
+    df.locale = Locale(identifier: "en_US_POSIX")
+    df.dateFormat = "LLLL"  // if you need 3 letter month just use "LLL"
+    if let date = df.date(from: month) {
+        let mo = Calendar.current.component(.month, from: date)
+        return mo
+    }
+    return 1
+}
+
+func getLastDay(month: Int) -> Int {
+    let thirtyOne = [1, 3, 5, 7, 8, 10, 12]
+    let thirty = [4, 6, 9, 11]
+    if (thirtyOne.contains(month)) {
+        return 31
+    }
+    else if (thirty.contains(month)) {
+        return 30
+    }
+    return 28 // Ignore leap years :)
+}
