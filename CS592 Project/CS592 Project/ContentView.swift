@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Quartz
+import AppKit
 
 func parseUserEdits(editedAndArgs: [String], editedOrArgs: [String]) -> (String, [String], [String]) {
     // Yes this is basically duplicated code :(
@@ -19,8 +20,6 @@ func parseUserEdits(editedAndArgs: [String], editedOrArgs: [String]) -> (String,
     
     // Assumes a singular "and" with up to one nested "or" at the end
     // Future work should parse this string into a tree of conjunctions to avoid this
-    
-    var haveFoundOr = false
     
     let allArgs = editedAndArgs + editedOrArgs
     for i in stride(from: 0, to: allArgs.count-1, by: 2) {
@@ -475,15 +474,14 @@ func parseSEMPREOutput(input: String) -> (String, [String], [String]) {
     
 }
 
-func runSEMPRE(query: String) -> String {
-    
-    
-    
+func runSEMPRE(query: String, semprePath: String) -> String {
+
     let stdOut = Pipe()
     let process = Process()
     // TODO: File path will need to be changed. Could prompt the user to show the location when they start the app
     //FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)
-    process.executableURL = URL(fileURLWithPath: "/Users/Ben/Downloads/sempre/test.sh")
+    print("URL: ", semprePath + "test.sh")
+    process.executableURL = URL(fileURLWithPath: semprePath + "/test.sh")
     process.arguments = [query]
     process.standardOutput = stdOut
 
@@ -508,7 +506,7 @@ func runSEMPRE(query: String) -> String {
     //let data = stdOut.fileHandleForReading.readDataToEndOfFile()
     //if let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
 
-    let fileURL = URL(fileURLWithPath: "/Users/Ben/Downloads/sempre/test")
+    let fileURL = URL(fileURLWithPath: semprePath + "/test")
 
     //reading
     do {
@@ -583,13 +581,24 @@ struct ContentView: View {
     // Show mdfind arguments
     @State var showArguments = false
     
+    @State var semprePath = ""
+    
+    @State private var showingHelp = false
+    
     var body: some View {
         
         VStack {
             
-            Button("Allow Permissions", action: {
-                promptForWorkingDirectoryPermission()
-            })
+            HStack {
+                Text("Debug Prompts: ")
+                Button("Allow Permissions", action: {
+                    promptForWorkingDirectoryPermission()
+                })
+                Button("Select SEMPRE Location", action: {
+                    self.semprePath = promptForSemprePath()
+                })
+            }.padding().background(Color.red).cornerRadius(15)
+            
             
             HStack(alignment: .top) {
                 TextField("Enter your search", text: $searchQuery)
@@ -600,11 +609,14 @@ struct ContentView: View {
                         return
                     }
                     
+                    if (semprePath == "") {
+                        return
+                    }
+                    
                     // Run sempre and get output
-                    let sempreOutput = runSEMPRE(query: searchQuery)
+                    let sempreOutput = runSEMPRE(query: searchQuery, semprePath: semprePath)
                     if (sempreOutput == "error") {
-                        Text("SEMPRE parse error")
-                        return;
+                        return
                     }
                     
                     let (mdfindQuery, andArgsToShow, orArgsToShow) = parseSEMPREOutput(input: sempreOutput)
@@ -629,7 +641,7 @@ struct ContentView: View {
                     
                 }) {
                     Text("Seach")
-                }.padding(.trailing)
+                }.padding(.trailing).keyboardShortcut(.defaultAction)
             
                 // TODO: Add loading indicator and disable button for slow search
             }
@@ -771,6 +783,31 @@ struct ContentView: View {
             .padding()
             .onAppear(perform: {promptForWorkingDirectoryPermission()})
         
+        Spacer()
+        HStack {
+            Spacer()
+            Button("Help", action: {
+                showingHelp = true
+            }).padding().popover(isPresented: $showingHelp) {
+                Text("Tool Usage")
+                    .font(.title)
+                    .padding()
+                
+                VStack(alignment: .leading) {
+                    Text("Usage 1").font(.headline)
+                    Text("Can you find (slides/pdf/ppt/presentation/document/word doc) from (x) years ago?").padding(EdgeInsets(top: 0, leading: 15, bottom: 15, trailing: 0))
+                    Text("Usage 2").font(.headline)
+                    Text("Can you find (slides/pdf/ppt/presentation/document/word doc) from (x) months ago?").padding(EdgeInsets(top: 0, leading: 15, bottom: 15, trailing: 0))
+                    Text("Usage 3").font(.headline)
+                    Text("Find a file downloaded from (overleaf/brightspace/google docs) it might be in a folder named (fall21/spring21/verification/receipts) or (fall21/spring21/verification/receipts)").padding(EdgeInsets(top: 0, leading: 15, bottom: 15, trailing: 0))
+                    Text("Usage 4").font(.headline)
+                    Text("I'm looking for a (large/small) file that was edited in (january/february/.../december)").padding(EdgeInsets(top: 0, leading: 15, bottom: 15, trailing: 0))
+                }.padding()
+                
+            }
+        }
+        
+        
         
         
     }
@@ -791,8 +828,22 @@ private func promptForWorkingDirectoryPermission() -> Void {
     openPanel.canChooseFiles = false
     openPanel.canChooseDirectories = true
     
-    let response = openPanel.runModal()
+    openPanel.runModal()
     print(openPanel.urls)
+}
+
+private func promptForSemprePath() -> String {
+    let openPanel = NSOpenPanel()
+    openPanel.message = "Choose your directory"
+    openPanel.prompt = "Choose"
+    openPanel.allowedFileTypes = ["none"]
+    openPanel.allowsOtherFileTypes = false
+    openPanel.canChooseFiles = false
+    openPanel.canChooseDirectories = true
+    
+    openPanel.runModal()
+    print(openPanel.urls)
+    return openPanel.url?.path ?? ""
 }
 
 
@@ -829,6 +880,10 @@ struct MyPreview: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: QLPreviewView, context: NSViewRepresentableContext<MyPreview>) {
+        if (fileName != nil) {
+            nsView.previewItem = loadPreviewItem(with: fileName) as QLPreviewItem
+        }
+        
     }
 
     typealias NSViewType = QLPreviewView
